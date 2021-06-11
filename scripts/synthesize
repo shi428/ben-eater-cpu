@@ -1,0 +1,116 @@
+#!/bin/bash
+proj=""
+option=""
+
+if [ "$#" -eq 1 ]; then
+    proj=$1
+elif [ "$#" -eq 2 ]; then
+    option=$1
+    if [ $option != "-d" ]; then
+        echo "Wrong argument supplied"
+        exit
+    fi
+    proj=$2
+else
+    echo "wrong number of arguments"
+    exit
+fi
+files=$(scripts/dependencies.py dependencies/$proj.d syn)
+projectDir=$PWD/synthesis
+mapped=$PWD/mapped
+fpga=$PWD/fpga
+sourceDir=$PWD/source/modules
+constraintsDir=$PWD/source/constraints
+incDir=$PWD/include
+xdcFile=$proj.sdc
+tclFile=$proj.tcl
+if [ ! -d "$projectDir" ]; then
+    mkdir $projectDir
+fi
+if  [[ "$proj" == "system" ]] ; then
+    if [ -f meminit.hex ] ; then
+        cp meminit.hex $projectDir
+    else
+        echo "no meminit.hex file!"
+        exit
+    fi
+fi
+if [ -f "$projectDir/$xdcFile" ]; then
+    echo "constraint file already exists!"
+else
+    echo 'create_clock -name CLK [get_ports {CLK}] -period 100MHz' >> $xdcFile
+    echo 'create_clock -name CLK_50 [get_ports {CLOCK_50}] -period 100MHz' >> $xdcFile
+    echo 'create_generated_clock -divide_by 2 -source [get_ports CLK] -name CPUCLK [get_pins CPUCLK|q]' >> $xdcFile
+    echo 'create_generated_clock -divide_by 2 -source [get_ports CLOCK_50] -name CPUCLK [get_pins system:SYS|CPUCLK|q]' >> $xdcFile
+fi
+if [ -f "$projectDir/$tclFile" ]; then
+    echo "tcl file already exists!"
+else 
+    echo package require ::quartus::project >> $tclFile
+    echo if {[project_exists $proj]} { >> $tclFile
+    echo	project_open -revision $proj $proj >> $tclFile
+    echo } else { >> $tclFile
+    echo	project_new -revision $proj $proj >> $tclFile
+    echo } >> $tclFile
+
+
+	echo 'set_global_assignment -name FAMILY "Cyclone IV E"' >> $tclFile
+	echo set_global_assignment -name DEVICE EP4CE115F29C7 >> $tclFile
+    echo set_global_assignment -name USE_GENERATED_PHYSICAL_CONSTRAINTS OFF -section_id eda_blast_fpga >> $tclFile
+	echo set_global_assignment -name ORIGINAL_QUARTUS_VERSION 20.1.1 >> $tclFile
+	echo 'set_global_assignment -name PROJECT_CREATION_TIME_DATE "17:28:04  MAY 27, 2021"' >> $tclFile
+	echo 'set_global_assignment -name LAST_QUARTUS_VERSION "20.1.1 Lite Edition"' >> $tclFile
+	echo set_global_assignment -name PROJECT_OUTPUT_DIRECTORY $projectDir>> $tclFile
+    echo set_global_assignment -name SDC_FILE $xdcFile >> $tclFile
+    echo set_global_assignment -name TIMEQUEST_DO_REPORT_TIMING ON >> $tclFile
+    echo set_global_assignment -name SYNTH_TIMING_DRIVEN_SYNTHESIS ON >> $tclFile
+	echo set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0 >> $tclFile
+	echo set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85 >> $tclFile
+	echo set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1 >> $tclFile
+	echo set_global_assignment -name NOMINAL_CORE_SUPPLY_VOLTAGE 1.2V >> $tclFile
+	echo 'set_global_assignment -name FMAX_REQUIREMENT "100 MHz"' >> $tclFile
+	echo 'set_global_assignment -name EDA_SIMULATION_TOOL "ModelSim-Altera (SystemVerilog)"' >> $tclFile
+	echo 'set_global_assignment -name EDA_TIME_SCALE "1 ps" -section_id eda_simulation' >> $tclFile
+	echo set_global_assignment -name EDA_RUN_TOOL_AUTOMATICALLY ON -section_id eda_simulation >> $tclFile
+	echo 'set_global_assignment -name EDA_OUTPUT_DATA_FORMAT "Verilog" -section_id eda_simulation' >> $tclFile
+	echo set_global_assignment -name EDA_GENERATE_FUNCTIONAL_NETLIST ON -section_id eda_board_design_timing >> $tclFile
+	echo set_global_assignment -name EDA_GENERATE_FUNCTIONAL_NETLIST ON -section_id eda_board_design_symbol >> $tclFile
+	echo set_global_assignment -name EDA_GENERATE_FUNCTIONAL_NETLIST ON -section_id eda_board_design_signal_integrity >> $tclFile
+	echo set_global_assignment -name EDA_GENERATE_FUNCTIONAL_NETLIST ON -section_id eda_board_design_boundary_scan >> $tclFile
+    echo set_global_assignment -name SEARCH_PATH $incDir >> $tclFile
+    for i in ${files[@]}; do
+        echo set_global_assignment -name SYSTEMVERILOG_FILE "$sourceDir/$i" >> $tclFile
+    done
+    cat $constraintsDir/pins >> $tclFile
+
+	# Commit assignments
+	echo export_assignments >> $tclFile
+
+	# Close project
+	echo project_close >> $tclFile
+    mv $tclFile $projectDir
+    mv $xdcFile $projectDir
+fi
+
+cd $projectDir
+quartus_sh --64bit -t "$tclFile"
+quartus_map --64bit $proj -c $proj
+quartus_fit --64bit $proj -c $proj
+quartus_drc --64bit $proj -c $proj
+quartus_sta --64bit $proj -c $proj
+quartus_eda --64bit $proj -c $proj
+quartus_asm --64bit $proj -c $proj
+if [ ! -d mapped ]; then
+    mkdir -p $mapped
+fi
+if [ ! -d fpga ]; then
+    mkdir -p $fpga
+fi
+mv $projectDir/simulation/modelsim/$proj.svo $mapped/$proj.sv
+mv $projectDir/$proj.sof $fpga
+#echo program fpga?
+#read var
+if [ "$option" == "-d" ]; then
+    quartus_pgm -c 1 -m jtag -o p\;$fpga/$proj.sof
+fi
+
