@@ -55,13 +55,13 @@ $(LIBDIR):
 	test -d $(LIBDIR) || vlib $(LIBDIR)
 %.d: | $(DEPDIR)
 	scripts/dependencies.py $@ > $@
-%.vho: %.vh
-	$(XVLOG) $(VERFLAGS) $<
+%.vho: %.vh | $(LIBDIR)
+	$(VLOG) $(VERFLAGS) $<
 	touch $(DEPDIR)/$@
-%.svo: %.sv
+%.svo: %.sv | $(LIBDIR)
 	$(VLOG) $(VERFLAGS) $<
 	touch $(DEPDIR)/$@
 %_tb.sim %.sim: %_tb
 	$(SIM) -c $(LIBDIR).$(addsuffix _tb, $*) -do "run -all; exit"
 clean:
-	rm -rf dependencies *.tcl *.log *.do v* mem* transcript $(LIBDIR) synthesis mapped fpga
+	rm -rf dependencies *.tcl *.log *.do v* mem* transcript $(LIBDIR) synthesis mapped fpga gate*

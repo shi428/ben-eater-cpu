@@ -6,7 +6,7 @@ module register
     input logic CLK,
     input logic nRST,
     input logic WEN,
-    output logic [WIDTH - 1: 0] wdat,
+    input logic [WIDTH - 1: 0] wdat,
     output logic [WIDTH - 1: 0] rdat
 );
 

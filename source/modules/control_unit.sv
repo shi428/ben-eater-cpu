@@ -2,6 +2,7 @@ module control_unit
 (
     input logic CLK,
     input logic nRST,
+    input logic ctrl_en,
     input logic [3:0] opcode,
     input logic zero,
     input logic carry,
@@ -26,7 +27,7 @@ module control_unit
 
 logic [2:0] count, next_count;
 always_comb begin
-    next_count = count + 1;
+    next_count = count; 
     halt = '0;
     addressWEN = '0; 
     ramWEN = '0;
@@ -38,11 +39,14 @@ always_comb begin
     aluREN = '0;
     sub = '0;
     bWEN = '0;
-    outputWEN = 1'b1;
+    outputWEN= 1'b0;
     pcEN = '0;
     pcREN = '0;
     jump = '0;
     flagWEN = '0;
+    if (ctrl_en) begin
+        next_count = count + 1;
+    end
     case (count) 
         3'b000: begin
             addressWEN = 1'b1;
@@ -121,6 +125,7 @@ always_comb begin
             endcase
         end
         3'b100: begin
+            next_count = '0;
             case (opcode) 
                 4'b0010: begin //ADD
                     aWEN = 1'b1;
